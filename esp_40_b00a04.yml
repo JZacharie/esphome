@@ -1,0 +1,170 @@
+substitutions:
+  devicename: esp_40_b00a04
+  friendly_name: Piscine 
+  ip_address: 192.168.0.40
+
+esphome:
+  name: ${devicename}
+  platform: ESP32
+  board: esp32dev
+
+wifi:
+  domain: .zacharie.org
+  use_address: $ip_address
+  manual_ip:
+      static_ip: $ip_address
+      gateway: 192.168.0.1
+      subnet: 255.255.255.0
+      dns1: 192.168.0.115
+      dns2: 192.168.0.1
+  networks:
+  - ssid: wifi
+    password: !secret wifi_psk
+  - ssid: zac_2G
+    password: !secret wifi_psk
+  - ssid: zac_5G
+    password: !secret wifi_psk    
+  ap:
+    ssid: ${devicename}_Fallback_Hotspot
+    password: !secret wifi_psk
+
+captive_portal:
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: !secret api_password
+
+ota:
+  password: !secret ota_password
+
+web_server:
+  port: 80
+
+dallas:
+  - pin: 32
+    update_interval: 1s
+
+# Individual sensors
+sensor:
+  - platform: dallas
+    address: 0x93011927AE58C528
+    name: "${devicename}_Temperature"  
+    id: temperature
+    update_interval: 60s
+  - platform: uptime
+    name: Uptime Sensor
+  - platform: wifi_signal
+    name: "${devicename}_WiFi Signal Sensor"
+    update_interval: 60s
+  - platform: adc
+    pin: 34
+    name: "${devicename}_VCC Voltage"
+    update_interval: 60s
+
+text_sensor:
+  - platform: version
+    name: "${devicename}_ESPHome Version"   
+  - platform: wifi_info
+    ip_address:
+      name: "${devicename}_ESP IP Address"
+    ssid:
+      name: "${devicename}_ESP Connected SSID"
+    bssid:
+      name: "${devicename}_ESP Connected BSSID"
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO19
+  
+font:
+  - file: 'slkscr.ttf'
+    id: font1
+    size: 16
+  - file: 'BebasNeue-Regular.ttf'
+    id: font2
+    size: 85
+  - file: 'Arial-Black.ttf'
+    id: font3
+    size: 20
+    
+image:
+  - file: "ha_esphome.png"
+    id: my_image
+    type: RGB565
+  - file: "clock_bg.png"
+    id: clock_bg
+    type: RGB565
+  
+display:
+  - platform: st7789v
+    id: st7789vdisplay
+    reset_pin: GPIO23
+    dc_pin: GPIO16
+    cs_pin: GPIO5
+    bl_pin: GPIO4
+    update_interval: 1s
+    pages:
+      - id: page1
+        lambda: |-
+          it.set_rotation(DISPLAY_ROTATION_90_DEGREES);
+          it.printf(4, 90, id(font2), 0x767E, TextAlign::BASELINE_LEFT, "%8.2f", id(temperature).state);
+      - id: page2
+        lambda: |-
+          it.set_rotation(DISPLAY_ROTATION_90_DEGREES);
+          it.strftime(4, 90, id(font2), 0x767E, TextAlign::BASELINE_LEFT, "%H:%M:%S", id(esptime).now());
+
+binary_sensor:
+  - platform: gpio
+    pin: 
+      number: 35
+      inverted: True
+    name: ${devicename}_button_35
+    on_click:
+    - min_length: 50ms
+      max_length: 350ms
+      then:
+        - display.page.show: page2
+        - component.update: st7789vdisplay   
+  - platform: gpio
+    pin: 
+      number: 0
+      inverted: True
+    name: ${devicename}_button_0
+    on_click:
+    - min_length: 50ms
+      max_length: 350ms
+      then:
+        - display.page.show: page1
+        - component.update: st7789vdisplay
+     
+time:
+  - platform: homeassistant
+
+switch:
+  - platform: restart
+    name: "${devicename}_restart"             
+    
+mqtt:
+  broker: !secret mqtt_endpoint
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  port: 1883
+  birth_message:
+  will_message:
+  on_message:
+    - topic: ${devicename}/ota_mode
+      payload: 'ON'
+      then:
+        - deep_sleep.prevent: deep_sleep1
+    - topic: ${devicename}/sleep_mode
+      payload: 'ON'
+      then:
+        - deep_sleep.enter: deep_sleep1
+
+deep_sleep:
+  id: deep_sleep1
+  run_duration: 10s
+  sleep_duration: 5min    
